@@ -106,8 +106,10 @@ with timezone and total duration. If you regenerate a report from existing `trx\
 the "Tests ran" line is preserved as long as `run_meta.json` is still in the output folder.
 
 **Reports root + previous-run comparison.** The parser persists `metrics.json` both into `--outdir` and
-into `--reports-root\<yyyyMMdd>\<playlist-key>\` (default reports root `Q:\delos-test-reports`,
-playlist-key `cs3`/`cs5`). On each run it auto-discovers the **latest earlier** `metrics.json` for the
+into `--reports-root\<yyyyMMdd>\<playlist-key>\` (playlist-key `cs3`/`cs5`). The **default reports root is
+`%OneDrive%\delos-test-reports`** when OneDrive is available (falling back to `Q:\delos-test-reports`),
+so the comparison history is **shared across machines** — run the daily reports from either machine and the
+trend still lines up. On each run it auto-discovers the **latest earlier** `metrics.json` for the
 same playlist under that root and emits a `📈 Comparison vs previous run (<date>)` section (pass-rate,
 deterministic %, executed count, and per-category failure deltas with 🔼/🔽 arrows). The **first** run
 for a playlist has no prior, so it prints a one-line "baseline" note instead — that is expected. Override
@@ -155,8 +157,9 @@ playlist (best-of-3 pass rate + deterministic %) and the previous-run trend if a
 where the artifacts live: **both styled reports sit together in the shared dated root** `$out`
 (`CS-3_<yyyyMMdd>.md`, `CS-5_<yyyyMMdd>.md`, `report_cs3.md`/`report_cs5.md`, `metrics_cs3.json`/
 `metrics_cs5.json`), while each playlist's raw run artifacts (`trx\`, `runner.log`, `run_meta.json`) stay in
-its `$out\cs3\` / `$out\cs5\` subfolder. Reports are also persisted under
-`Q:\delos-test-reports\<date>\<key>\` (single date folder per daily run).
+its `$out\cs3\` / `$out\cs5\` subfolder. Reports are also persisted under the reports root
+(`%OneDrive%\delos-test-reports\<date>\<key>\` when OneDrive is available, else
+`Q:\delos-test-reports\<date>\<key>\`) — one date folder per daily run, shared across machines via OneDrive.
 
 ## Failure-triage classification (reference)
 
@@ -176,27 +179,36 @@ appears in the `Other` bucket, extend `classify()` and `LABELS` and re-run the p
 - **Do not** persist the APM token anywhere — it is acquired fresh per chunk and is short-lived.
 - To re-run only the reports without re-testing, skip step 1 and run step 2 against existing `trx\`.
 
-## Running this skill on another machine
+## Running this skill on another machine (sync setup)
 
-The skill is a folder of scripts + this `SKILL.md` — it is not tied to one box. To run it elsewhere:
+This personal copy of the skill lives in a **private GitHub repo**
+(`LuChen-Microsoft/sovcloud-e2e-daily-skill`) and both machines use it as a **git clone**, so the skill
+files sync via git and the report/comparison history syncs via **OneDrive**. To set up a new machine:
 
-1. **Install the skill files.** Copy this whole folder to the same path on the target machine:
-   `~/.copilot/skills/sovcloud-e2e-daily/` (i.e. `%USERPROFILE%\.copilot\skills\sovcloud-e2e-daily`),
-   containing `SKILL.md` and `scripts\` (`Run-Playlist.ps1`, `parse_report.py`). The `__pycache__` folder is
-   not needed. Copilot CLI auto-discovers user skills under `~/.copilot/skills`. (Alternatively, keep the
-   folder in source control / a share and clone-or-copy it into that path.)
-2. **Clone the test repo** to `Q:\repos\async_messaging_e2e-tests` (the default `-RepoRoot`). If you put it
-   elsewhere, pass `-RepoRoot <path>` to `Run-Playlist.ps1` and adjust the `$repo`/`--trx`/`--tests` paths.
-3. **Toolchain**: install .NET SDK + the **VS Test Platform** (`vstest.console.exe` — ships with Visual
-   Studio or the standalone `Microsoft.TestPlatform`; the runner auto-discovers it) and **Python 3** on PATH
+1. **Install the skill (git clone).** Clone the private repo straight into the Copilot skills folder so
+   Copilot CLI auto-discovers it — no copy-paste:
+   ```powershell
+   git clone https://github.com/LuChen-Microsoft/sovcloud-e2e-daily-skill `
+     "$env:USERPROFILE\.copilot\skills\sovcloud-e2e-daily"
+   ```
+   (Requires a GitHub credential with access to the private repo — e.g. `gh auth login` once.)
+2. **Keep it in sync.** Git does **not** auto-sync. Before running, `git -C <skill-folder> pull`; after
+   editing the skill, `git -C <skill-folder> commit`/`push`. Editing on both machines without pulling first
+   causes normal git conflicts — pull first.
+3. **Clone the test repo** to `Q:\repos\async_messaging_e2e-tests` (the default `-RepoRoot`; else pass
+   `-RepoRoot <path>` to `Run-Playlist.ps1` and adjust the `$repo`/`--trx`/`--tests` paths).
+4. **Toolchain**: .NET SDK + the **VS Test Platform** (`vstest.console.exe` — ships with Visual Studio or the
+   standalone `Microsoft.TestPlatform`; the runner auto-discovers it) and **Python 3** on PATH
    (`parse_report.py` uses only the stdlib — no pip installs).
-4. **Access / prerequisites** (same as the local run, see *Prerequisites* above):
+5. **Access / prerequisites** (same as the local run, see *Prerequisites* above):
    - Corp `az login` for tenant `72f988bf-86f1-41af-91ab-2d7cd011db47` (APM token source), with the current
      user in the APM pool group for Delos.
    - **VPN** to the SovCloud connected (AzureVPN) — the APIs are otherwise unreachable.
    - `dotnet nuget disable source scc` once (dead feed) and access to the `tps` NuGet feed.
-5. **Reports root**: the default persistent root `Q:\delos-test-reports` may not exist on the new machine.
-   Either create the `Q:` drive/path, or pass `--reports-root <path>` to `parse_report.py` (previous-run
-   comparison then discovers priors under that new root — the first run there is simply the baseline).
-6. Invoke the skill the same way — trigger phrases like *"run daily sovcloud tests"* / *"run CS-3 and CS-5"*,
+6. **Reports history / comparison (OneDrive)**: `parse_report.py` defaults `--reports-root` to
+   `%OneDrive%\delos-test-reports`, so the `metrics.json` history — and the *"Comparison vs previous run"*
+   trend — **follows you across machines** as long as **OneDrive is signed in and synced** on both. If a
+   machine has no OneDrive it falls back to `Q:\delos-test-reports` (local only); pass `--reports-root <path>`
+   to override.
+7. Invoke the skill the same way — trigger phrases like *"run daily sovcloud tests"* / *"run CS-3 and CS-5"*,
    or run the scripts directly as shown in the Workflow above.

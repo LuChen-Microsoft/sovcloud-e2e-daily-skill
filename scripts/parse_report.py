@@ -296,6 +296,15 @@ def comparison_block(cur, prev):
     return L
 
 
+def default_reports_root():
+    """Persistent reports root for cross-run comparison. Defaults to a per-user
+    OneDrive folder when available so the metrics.json history (and the
+    'vs previous run' comparison) follows the user across machines; falls back
+    to Q:\\delos-test-reports when OneDrive is not present."""
+    od = os.environ.get("OneDrive") or os.environ.get("OneDriveCommercial")
+    return os.path.join(od, "delos-test-reports") if od else r"Q:\delos-test-reports"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--trx", required=True)
@@ -305,8 +314,10 @@ def main():
     ap.add_argument("--config", default="AppDelos.config")
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--outdir", required=True)
-    ap.add_argument("--reports-root", default=r"Q:\delos-test-reports",
-                    help="Persistent reports root used to discover the previous run for comparison.")
+    ap.add_argument("--reports-root", default=default_reports_root(),
+                    help="Persistent reports root used to discover the previous run for comparison. "
+                         "Defaults to %%OneDrive%%\\delos-test-reports when OneDrive is available (so the "
+                         "history syncs across machines), else Q:\\delos-test-reports.")
     ap.add_argument("--prev", default=None,
                     help="Optional explicit previous metrics.json (or its folder); overrides auto-discovery.")
     ap.add_argument("--report-out", default=None,

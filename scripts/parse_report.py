@@ -227,6 +227,15 @@ def write_metrics(path, metrics):
         pass
 
 
+def write_text(path, text):
+    """Write a text file, creating parent dirs. Best-effort (never raises)."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w", encoding="utf-8").write(text)
+    except Exception:
+        pass
+
+
 def find_prev_metrics(reports_root, key, cur_date, explicit=None):
     """Find the most recent previous run's metrics for this playlist.
 
@@ -497,7 +506,8 @@ def main():
         P.append("\n## Not present in build (stale playlist entries)")
         P += [f"- {t}" for t in not_in_build]
     plain_name = f"report_{key}.md" if shared else "report.md"
-    open(os.path.join(report_out, plain_name), "w", encoding="utf-8").write("\n".join(P))
+    plain_text = "\n".join(P)
+    open(os.path.join(report_out, plain_name), "w", encoding="utf-8").write(plain_text)
 
     # ---------- styled report ----------
     # Filename: <playlist-slug>_<yyyyMMdd>.md (e.g. CS-3_20260625.md); slug + date computed above.
@@ -545,14 +555,21 @@ def main():
         S += ["", "## \U0001F9F9 Stale playlist entries (not in build)", ""]
         S += [f"- {t}" for t in not_in_build]
     S.append("")
-    open(os.path.join(report_out, styled_name), "w", encoding="utf-8").write("\n".join(S))
+    styled_text = "\n".join(S)
+    open(os.path.join(report_out, styled_name), "w", encoding="utf-8").write(styled_text)
 
     # Persist machine-readable metrics for next-run comparison: alongside the deliverable
     # reports and into the reports root (<reports_root>\<date>\<key>\metrics.json) so future
     # runs auto-discover it. In the shared-folder case the local copy is key-suffixed.
     metrics_name = f"metrics_{key}.json" if shared else "metrics.json"
     write_metrics(os.path.join(report_out, metrics_name), metrics)
-    write_metrics(os.path.join(a.reports_root, date_str, key, "metrics.json"), metrics)
+    rr_dir = os.path.join(a.reports_root, date_str, key)
+    write_metrics(os.path.join(rr_dir, "metrics.json"), metrics)
+    # Also persist the human-readable reports into the reports root so the styled report
+    # and the plain report sync across machines (e.g. via OneDrive) next to metrics.json,
+    # not only in the run output folder. The per-key subfolder keeps CS-3/CS-5 separate.
+    write_text(os.path.join(rr_dir, styled_name), styled_text)
+    write_text(os.path.join(rr_dir, "report.md"), plain_text)
 
     print("\n".join(P))
     print(f"\n[written {os.path.join(report_out, plain_name)} and {styled_name}]")

@@ -32,7 +32,13 @@ param(
   [switch]$SkipBuild,
   [switch]$SkipConfigPatch
 )
-$ErrorActionPreference = 'Stop'
+# NOTE: intentionally 'Continue', not 'Stop'. vstest.console.exe always writes a "Test Run Failed."
+# banner to stderr whenever >=1 test in a chunk fails (normal/expected - see SKILL.md). PowerShell
+# treats native-command stderr output as an ErrorRecord, and 'Stop' promotes that into a terminating
+# exception that would abort the whole multi-hour run at the first failing test. Every step that must
+# hard-stop on real failure (build, playlist extraction) already does an explicit $LASTEXITCODE/throw
+# check below, so 'Continue' here does not mask genuine harness errors.
+$ErrorActionPreference = 'Continue'
 
 $proj     = Join-Path $RepoRoot 'MessagingE2ETests\MessagingE2ETests.csproj'
 $appCfg   = Join-Path $RepoRoot 'MessagingE2ETests\app.config'

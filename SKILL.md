@@ -105,11 +105,15 @@ Both reports start with timestamp lines: **report-generation time** (with timezo
 with timezone and total duration. If you regenerate a report from existing `trx\` without re-running,
 the "Tests ran" line is preserved as long as `run_meta.json` is still in the output folder.
 
-**Reports root + previous-run comparison.** The parser persists into `--reports-root\<yyyyMMdd>\<playlist-key>\`
-(playlist-key `cs3`/`cs5`) **three** files: `metrics.json` (machine-readable, drives the comparison), the
-styled report `<slug>_<yyyyMMdd>.md`, and the plain `report.md`. This means the **human-readable reports
-sync across machines too** (not just the metrics), so you can read a run's report from either machine. The
-**default reports root is `%OneDrive%\delos-test-reports`** when OneDrive is available (falling back to
+**Reports root + previous-run comparison.** The parser persists to `--reports-root\<yyyyMMdd>\`: the
+human-readable styled report `<slug>_<yyyyMMdd>.md` (e.g. `CS-3_20260706.md`) and the plain
+`report_<playlist-key>.md` (e.g. `report_cs3.md`) land **directly in the dated folder** — both playlists'
+reports are visible side-by-side without opening a subfolder. Only the machine-readable `metrics.json` is
+nested one level deeper, under `<yyyyMMdd>\<playlist-key>\metrics.json` (playlist-key `cs3`/`cs5`), because
+`find_prev_metrics()` globs that exact shape to discover prior runs — it isn't meant to be browsed directly.
+This means the **human-readable reports sync across machines too** (not just the metrics), so you can read a
+run's report from either machine. The **default reports root is `%OneDrive%\delos-test-reports`** when
+OneDrive is available (falling back to
 `Q:\delos-test-reports`), so both the reports and the comparison history are **shared across machines** — run
 the daily reports from either machine and the trend still lines up. On each run it auto-discovers the
 **latest earlier** `metrics.json` for the same playlist under that root and emits a
@@ -158,12 +162,13 @@ The reports include, for each failing test, a `🔎 Failure telemetry` appendix 
 from StdOut the cell shows `-` (common for pure NUnit timeouts that never got a service response).
 
 **After enriching**, copy the final styled report over the reports-root skeleton so the **synced** copy is
-the enriched one (the parser wrote the pre-enrichment version there). For each playlist:
+the enriched one (the parser wrote the pre-enrichment version there). For each playlist, note the reports
+root copy is now **flat** (directly under the date folder, not under a `cs3\`/`cs5\` subfolder):
 
 ```powershell
 $rr = if($env:OneDrive){"$env:OneDrive\delos-test-reports"}else{'Q:\delos-test-reports'}
-Copy-Item "$out\CS-3_$date.md" "$rr\$date\cs3\" -Force
-Copy-Item "$out\CS-5_$date.md" "$rr\$date\cs5\" -Force
+Copy-Item "$out\CS-3_$date.md" "$rr\$date\" -Force
+Copy-Item "$out\CS-5_$date.md" "$rr\$date\" -Force
 ```
 
 ### 4. Present results
@@ -174,10 +179,11 @@ where the artifacts live: **both styled reports sit together in the shared dated
 (`CS-3_<yyyyMMdd>.md`, `CS-5_<yyyyMMdd>.md`, `report_cs3.md`/`report_cs5.md`, `metrics_cs3.json`/
 `metrics_cs5.json`), while each playlist's raw run artifacts (`trx\`, `runner.log`, `run_meta.json`) stay in
 its `$out\cs3\` / `$out\cs5\` subfolder. The reports are **also** persisted under the reports root
-(`%OneDrive%\delos-test-reports\<date>\<key>\` when OneDrive is available, else
-`Q:\delos-test-reports\<date>\<key>\`) — each `<key>` folder holds `<slug>_<date>.md`, `report.md`, and
-`metrics.json` — one date folder per daily run, so the reports **and** the history sync across machines via
-OneDrive.
+(`%OneDrive%\delos-test-reports\<date>\` when OneDrive is available, else `Q:\delos-test-reports\<date>\`) —
+`<slug>_<date>.md` and `report_<key>.md` land **directly in that date folder** (flat, both playlists
+visible together at a glance); only `metrics.json` lives one level deeper under `<date>\<key>\` since it's
+machine-readable bookkeeping, not something you'd normally open. One date folder per daily run, so the
+reports **and** the history sync across machines via OneDrive.
 
 ## Failure-triage classification (reference)
 
@@ -224,9 +230,11 @@ files sync via git and the report/comparison history syncs via **OneDrive**. To 
    - **VPN** to the SovCloud connected (AzureVPN) — the APIs are otherwise unreachable.
    - `dotnet nuget disable source scc` once (dead feed) and access to the `tps` NuGet feed.
 6. **Reports + comparison history (OneDrive)**: `parse_report.py` defaults `--reports-root` to
-   `%OneDrive%\delos-test-reports` and writes each run's **report** (`<slug>_<date>.md`, `report.md`) **and**
-   `metrics.json` there, so both the reports and the *"Comparison vs previous run"* trend **follow you across
-   machines** as long as **OneDrive is signed in and synced** on both. If a machine has no OneDrive it falls
+   `%OneDrive%\delos-test-reports` and writes each run's **report** (`<slug>_<date>.md`, `report_<key>.md`)
+   **directly under** `<reports-root>\<date>\` (flat — both playlists' reports visible together), plus
+   `metrics.json` one level deeper under `<date>\<key>\`, so both the reports and the *"Comparison vs
+   previous run"* trend **follow you across machines** as long as **OneDrive is signed in and synced** on
+   both. If a machine has no OneDrive it falls
    back to `Q:\delos-test-reports` (local only); pass `--reports-root <path>` to override.
 7. Invoke the skill the same way — trigger phrases like *"run daily sovcloud tests"* / *"run CS-3 and CS-5"*,
    or run the scripts directly as shown in the Workflow above.

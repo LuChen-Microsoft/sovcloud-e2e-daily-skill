@@ -563,13 +563,19 @@ def main():
     # runs auto-discover it. In the shared-folder case the local copy is key-suffixed.
     metrics_name = f"metrics_{key}.json" if shared else "metrics.json"
     write_metrics(os.path.join(report_out, metrics_name), metrics)
+    # metrics.json stays nested under <reports_root>\<date>\<key>\ because find_prev_metrics()
+    # globs "<reports_root>\*\<key>\metrics.json" to discover prior runs - this path is not
+    # meant to be browsed directly.
     rr_dir = os.path.join(a.reports_root, date_str, key)
     write_metrics(os.path.join(rr_dir, "metrics.json"), metrics)
-    # Also persist the human-readable reports into the reports root so the styled report
-    # and the plain report sync across machines (e.g. via OneDrive) next to metrics.json,
-    # not only in the run output folder. The per-key subfolder keeps CS-3/CS-5 separate.
-    write_text(os.path.join(rr_dir, styled_name), styled_text)
-    write_text(os.path.join(rr_dir, "report.md"), plain_text)
+    # Human-readable reports go directly under <reports_root>\<date>\ (flat, not nested under
+    # <key>\) so both playlists' reports are immediately visible side-by-side when browsing the
+    # dated folder (e.g. in OneDrive) - no need to open a cs3\/cs5\ subfolder to find them.
+    # styled_name is already playlist-unique (<slug>_<date>.md); the plain report is key-suffixed
+    # to avoid CS-3/CS-5 collisions, matching the --report-out naming convention.
+    date_root = os.path.join(a.reports_root, date_str)
+    write_text(os.path.join(date_root, styled_name), styled_text)
+    write_text(os.path.join(date_root, f"report_{key}.md"), plain_text)
 
     print("\n".join(P))
     print(f"\n[written {os.path.join(report_out, plain_name)} and {styled_name}]")

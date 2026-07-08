@@ -75,7 +75,17 @@ def classify(msg):
         return "C2-AadOther"
     if "not connected within" in ml or re.search(r"trouter.{0,40}(timeout|not connected)", ml):
         return "C6-Trouter"
-    if "<<< 401" in m and (re.search(r'"?kid"?', ml) or "unauthorized" in ml or "metadata" in ml):
+    # Scheduling Service (meeting creation) authorization failures. These surface as a 401 /
+    # "Unauthorized" from the Scheduling Service (POST .../teams/v1/meetings) and were previously
+    # mislabeled as MsgAPI401 -- but the owner is the Scheduling Service, NOT messaging tokens, so
+    # classify them explicitly here (before the MsgAPI401 rule below).
+    if ("schedulingexception" in ml or "scheduler.communications" in ml
+            or "/teams/v1/meetings" in ml):
+        return "C7-Scheduling"
+    # Genuine MsgAPI token 401: requires the token-metadata signature ("kid"/"metadata"). Do NOT
+    # match a bare "unauthorized" -- any 401 (e.g. the Scheduling Service failure above) contains
+    # that word, which is what caused the historical MsgAPI401 mislabeling.
+    if "<<< 401" in m and ("kid" in ml or "metadata" in ml):
         return "C5-MsgAPI401"
     if "asyncmediaexception" in ml or re.search(r"\bams\b[^\n]{0,60}(deployment|failed|error)", ml):
         return "C3-AMS"
@@ -169,6 +179,7 @@ LABELS = {
     "C2-AadOther": "AAD token failure (other AADSTS)",
     "C6-Trouter": "Trouter not connected within timeout",
     "C5-MsgAPI401": "MsgAPI 401 (token kid not in metadata)",
+    "C7-Scheduling": "Scheduling Service meeting creation unauthorized (not a messaging-token issue)",
     "C3-AMS": "AMS old deployment",
     "Timeout": "60s/90s NUnit timeout (uncategorized)",
     "Other": "Other / new failure pattern",

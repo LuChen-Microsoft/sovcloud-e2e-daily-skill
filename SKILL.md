@@ -147,7 +147,14 @@ report, replace the placeholders by reading the captured per-test `StdOut` in th
     per-occurrence from StdOut (event polling never satisfied, sync lag, TeamsMT latency) and reclassify.
   - `Other`: **genuine product/service bugs** — open the StdOut and name the specific signatures
     (e.g. TeamsMT `Forbidden`/`BadRequest`, ChatService `500`/`404`, assertion/event-predicate mismatch).
-  - Note `C5-MsgAPI401` and `C3-AMS` only if they actually occur (media/AMS are skipped on Delos).
+  - `C7-Scheduling` (Scheduling Service meeting-creation unauthorized): `MeetingTests.*` fail with
+    `SchedulingException: Invalid response code Unauthorized` from `POST .../teams/v1/meetings` — the
+    **Scheduling Service** rejects meeting creation on Delos. Owner is the Scheduling Service, **not**
+    messaging tokens. (This was historically mislabeled `C5-MsgAPI401`; the classifier now separates it.)
+    Do **not** route this to the AAD/token pool owner.
+  - `C5-MsgAPI401` (genuine MsgAPI token 401): only a real messaging-token failure — `<<< 401` with the
+    token **kid/metadata** signature. A bare `401 Unauthorized` from another service is **not** this bucket.
+  - Note `C5-MsgAPI401`, `C7-Scheduling`, and `C3-AMS` only if they actually occur (media/AMS are skipped on Delos).
 - **Path to green** — order the fixes by how many tests they unblock.
 - **Incident filing** — suggest an IcM **only** for the `Other` (real product) failures, split by owning
   service (resolve owner via `enghub-resolve_service`; ownership rotates). For evidence, pull the
@@ -188,8 +195,11 @@ reports **and** the history sync across machines via OneDrive.
 ## Failure-triage classification (reference)
 
 `parse_report.py classify()` buckets each failure from its StdOut, in this order:
-`AADSTS50020 → other AADSTS → Trouter ("not connected within") → MsgAPI 401 (requires "<<< 401") →
-AMS (asyncmediaexception) → generic "exceeded timeout value" → Other`. If a new recurring signature
+`AADSTS50020 → other AADSTS → Trouter ("not connected within") → Scheduling Service
+("schedulingexception" / "scheduler.communications" / "/teams/v1/meetings") → MsgAPI 401 (requires
+"<<< 401" **and** a "kid"/"metadata" token signature) → AMS (asyncmediaexception) →
+generic "exceeded timeout value" → Other`. Scheduling Service 401s are classified **before** MsgAPI401
+so they are never mislabeled as a messaging-token failure. If a new recurring signature
 appears in the `Other` bucket, extend `classify()` and `LABELS` and re-run the parser.
 
 ## Notes & gotchas

@@ -286,6 +286,68 @@ def _delta(prev, cur, pts=False, lower_better=False):
     return f"{arrow} {sign}{d:.1f}{' pts' if pts else ''}"
 
 
+def _short_fqn(fqn):
+    """Class.Method tail of a fully-qualified test name, for scannable lists."""
+    parts = fqn.split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else fqn
+
+
+def churn_lines(cur, prev):
+    """Per-test fixed/new diff vs the previous run.
+
+    Surfaces tests that were failing last run and now pass ("fixed") and tests that
+    were passing last run and now fail ("new"), with their failure categories. This
+    makes real progress/regressions visible even when the headline pass rate and the
+    per-category counts are flat (e.g. 3 timeouts fixed but 3 different tests newly
+    time out -> Timeout 6->6 looks unchanged while the bucket fully churned).
+    Requires the previous run's metrics to carry 'fail_tests'; older metrics predate
+    it, so we emit a one-line notice and let it populate from the next run onward.
+    """
+    cf, pf = cur.get("fail_tests"), prev.get("fail_tests")
+    if not isinstance(cf, dict) or not isinstance(pf, dict):
+        return ["- **\u2705\U0001F195 Fixed / new (per test):** _unavailable \u2014 the previous run predates "
+                "per-test failure tracking; this populates automatically from the next run onward._"]
+    pdate = prev.get("date", "?")
+    cur_fail, prev_fail = set(cf), set(pf)
+    cur_stale = set(cur.get("stale_tests", []))
+    cur_skip = set(cur.get("skipped_tests", []))
+    left = prev_fail - cur_fail
+    fixed = sorted(f for f in left if f not in cur_stale and f not in cur_skip)
+    dropped = sorted(f for f in left if f in cur_stale or f in cur_skip)
+    newly = sorted(cur_fail - prev_fail)
+    still = sorted(cur_fail & prev_fail)
+
+    def bullets(fqns, catmap, cap=20):
+        out = []
+        for f in fqns[:cap]:
+            cats = ",".join(catmap.get(f) or []) or "?"
+            out.append(f"  - `{_short_fqn(f)}` ({cats})")
+        if len(fqns) > cap:
+            out.append(f"  - \u2026and {len(fqns) - cap} more")
+        return out
+
+    L = []
+    if fixed:
+        L.append(f"- **\u2705 Fixed since {pdate} ({len(fixed)}):** were failing, now passing")
+        L += bullets(fixed, pf)
+    else:
+        L.append(f"- **\u2705 Fixed since {pdate} (0):** none")
+    if newly:
+        L.append(f"- **\U0001F195 New failures vs {pdate} ({len(newly)}):** were passing, now failing")
+        L += bullets(newly, cf)
+    else:
+        L.append(f"- **\U0001F195 New failures vs {pdate} (0):** none")
+    L.append(f"- **\u267B\ufe0f Still failing ({len(still)}):** unchanged from {pdate}")
+    if dropped:
+        names = ", ".join(f"`{_short_fqn(f)}`" for f in dropped[:10]) + (f" +{len(dropped) - 10} more" if len(dropped) > 10 else "")
+        L.append(f"- **\u26AA No longer executed ({len(dropped)}):** previously-failing, now stale/skipped \u2014 {names}")
+    net = len(newly) - len(fixed)
+    net_str = f"{'+' if net > 0 else ''}{net}"
+    masked = " \u2014 \u26A0\ufe0f churn hidden by a flat pass rate/count" if (fixed and newly and abs(net) <= 1) else ""
+    L.append(f"- **Net failing-test change:** {len(fixed)} fixed / {len(newly)} new = **{net_str}**{masked}")
+    return L
+
+
 def comparison_block(cur, prev):
     """Markdown lines comparing the current run to the previous run (or [] if none)."""
     if not prev:
@@ -311,8 +373,16 @@ def comparison_block(cur, prev):
         changes.append(f"{LABELS.get(cat, cat)} {p}\u2192{c} {mark}{tag}")
     if changes:
         L.append(f"- **Failure categories:** " + "; ".join(changes))
+    elif prev.get("cat_counts") is not None:
+        L.append("- **Failure categories:** no net count change "
+                 "(see per-test fixed/new below \u2014 buckets may still have churned)")
+    # Per-test churn: which specific tests were fixed vs newly broke. This is the part
+    # that stays meaningful when the pass rate and category counts are flat.
+    L += churn_lines(cur, prev)
     L += ["", "[AGENT: add ONE short sentence summarizing the trend \u2014 net better/worse, the "
-          "biggest mover, and whether any executed-count change is a config gap vs a real change]", ""]
+          "biggest mover, how many tests were FIXED vs NEWLY failing (call it out explicitly even "
+          "when the pass rate is flat, since equal counts can hide a fully churned bucket), and "
+          "whether any executed-count change is a config gap vs a real change]", ""]
     return L
 
 
@@ -472,6 +542,13 @@ def main():
         "skipped": len(skipped_tests), "stale": len(not_in_build),
         "run_pass": {str(r): run_pass[r] for r in runs}, "run_fail": {str(r): run_fail[r] for r in runs},
         "cat_counts": {cat: len(t) for cat, t in cat_tests.items()},
+        # Per-test failure identity so the NEXT run can diff which tests were fixed
+        # (were failing, now passing) vs newly failing - surfacing churn that flat
+        # category counts / pass rates otherwise hide. stale/skipped lists let the
+        # diff distinguish a genuine fix from a test that simply stopped executing.
+        "fail_tests": {fqn: sorted(cats) for fqn, cats in sorted(fqn_cats.items())},
+        "stale_tests": sorted(not_in_build),
+        "skipped_tests": sorted(skipped_tests),
         "group_rates": {g: round((grp_pass[g] / (len(grp_tests[g]) - grp_skip[g]) * 100)
                                   if (len(grp_tests[g]) - grp_skip[g]) else 0, 1) for g in grp_tests},
     }

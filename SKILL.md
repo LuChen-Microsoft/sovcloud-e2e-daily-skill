@@ -118,7 +118,14 @@ OneDrive is available (falling back to
 the daily reports from either machine and the trend still lines up. On each run it auto-discovers the
 **latest earlier** `metrics.json` for the same playlist under that root and emits a
 `📈 Comparison vs previous run (<date>)` section (pass-rate, deterministic %, executed count, and
-per-category failure deltas with 🔼/🔽 arrows). The **first** run for a playlist has no prior, so it prints a
+per-category failure deltas with 🔼/🔽 arrows). It also emits a **per-test fixed/new churn** subsection —
+✅ tests that were failing last run and now pass, 🆕 tests that were passing and now fail (each tagged with
+its failure category), a ♻️ still-failing count, and a **net failing-test change** line. This surfaces churn
+that flat headline numbers hide: e.g. if 3 timeouts are fixed but 3 *different* tests newly time out, the
+`Timeout` count stays 6→6 and the pass rate looks unchanged, yet the churn block still shows the 3 fixed and
+3 new by name. The churn diff needs the previous run's `metrics.json` to carry `fail_tests` (added in this
+skill version); runs whose prior predates it print a one-line "populates from next run onward" notice. The
+**first** run for a playlist has no prior, so it prints a
 one-line "baseline" note instead — that is expected. Override discovery with `--prev <metrics.json|folder>`
 or point at a different root with `--reports-root`. Do **not** add any peer/teammate comparison — the only
 built-in comparison is against this folder's prior run.
@@ -135,7 +142,11 @@ report, replace the placeholders by reading the captured per-test `StdOut` in th
 - **Comparison vs previous run** — if the auto-generated `📈 Comparison vs previous run` section is
   present, replace its `[AGENT: ...]` line with ONE short sentence summarizing the trend: net better/worse,
   the biggest mover, and whether any **executed-count change** points to a config/skip difference vs a real
-  change. (No peer/teammate comparison — only this folder's prior run.)
+  change. **Explicitly call out how many tests were FIXED vs NEWLY failing** from the ✅/🆕 churn subsection —
+  especially when the pass rate is flat, because equal category counts can hide a fully churned bucket (e.g.
+  timeouts fixed while a different set of tests newly times out). If a ✅ fixed test maps to a known code
+  change (e.g. a merged timeout-bump PR), name it; if the 🆕 new failures share a root cause with the fixed
+  ones (same flaky event-polling/latency pattern), say so. (No peer/teammate comparison — only this folder's prior run.)
 - **Known issues & status** — for every failure category, give the root cause + a concrete fix. Known
   buckets and their established narratives:
   - `C2-Aad50020` (AADSTS50020): account/guest **not provisioned as external/B2B** in the Delos tenant;

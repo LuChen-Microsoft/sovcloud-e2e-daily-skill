@@ -156,19 +156,31 @@ report, replace the placeholders by reading the captured per-test `StdOut` in th
     connect timeout too short under parallel load. Fix: bump to ~60s + retry once in `WorkingContextExtensions.cs`.
   - `Timeout` (uncategorized 60s/90s): dominant bucket; root cause not in the NUnit message — triage
     per-occurrence from StdOut (event polling never satisfied, sync lag, TeamsMT latency) and reclassify.
-  - `Other`: **genuine product/service bugs** — open the StdOut and name the specific signatures
-    (e.g. TeamsMT `Forbidden`/`BadRequest`, ChatService `500`/`404`, assertion/event-predicate mismatch).
-  - `C7-Scheduling` (Scheduling Service meeting-creation unauthorized): `MeetingTests.*` fail with
-    `SchedulingException: Invalid response code Unauthorized` from `POST .../teams/v1/meetings` — the
-    **Scheduling Service** rejects meeting creation on Delos. Owner is the Scheduling Service, **not**
-    messaging tokens. (This was historically mislabeled `C5-MsgAPI401`; the classifier now separates it.)
-    Do **not** route this to the AAD/token pool owner.
+  - `C8-ChatAcl403` (ChatService `403` `AclCheckFailed` / MFE `THREADACCESSDENIED`): an admin/space-admin
+    setting is **not honored** — the admin's message delete/edit is rejected (e.g.
+    `ToggleAdminDeleteEnabled_AdminHonors`, `TestRestoreArchivedTeam_DeleteOthersMessageAllowedAgain_ForAdmin`).
+    Owner: **ChatService / msgapi**. IcM-worthy.
+  - `C9-ChatNotFound` (ChatService `404` NotFound): an expected entity never materializes — e.g. an
+    activity-feed like/mention notification (`GroupChatTests.LikeNotification` / `MentionNotification`) the
+    poll never finds. Owner: **Activity Feed / Notifications (msgapi)**. IcM-worthy.
+  - `C10-TeamsMT403` (TeamsMT `403` Forbidden): a TeamsMT/middletier roster/role op is rejected (e.g.
+    `bulkUpdateRoledMembers` on guest promote/demote, `PromoteDemoteGuest_InitiatorAdmin_ThrowsException`).
+    Owner: **TeamsMT / middletier**. IcM-worthy.
+  - `Other`: residual **uncategorized** signatures only — open the StdOut, name the specific signature, and
+    if it recurs extend `classify()` + `LABELS` with a new named bucket (as `C8`–`C10` were).
+  - `C7-Scheduling` (Scheduling Service meeting-creation failure): `MeetingTests.*` fail with a
+    `SchedulingException` from `POST .../teams/v1/meetings` — the **Scheduling Service** rejects/aborts
+    meeting creation on Delos. Seen as `Unauthorized` (401) **or** `InternalServerError` (500, e.g. the
+    Scheduler's `MiddleTierServiceClient.GetUserRegion` call failing, errorSubCode 9024). Owner is the
+    Scheduling Service, **not** messaging tokens. (Historically mislabeled `C5-MsgAPI401`; the classifier now
+    separates it.) Do **not** route this to the AAD/token pool owner.
   - `C5-MsgAPI401` (genuine MsgAPI token 401): only a real messaging-token failure — `<<< 401` with the
     token **kid/metadata** signature. A bare `401 Unauthorized` from another service is **not** this bucket.
   - Note `C5-MsgAPI401`, `C7-Scheduling`, and `C3-AMS` only if they actually occur (media/AMS are skipped on Delos).
 - **Path to green** — order the fixes by how many tests they unblock.
-- **Incident filing** — suggest an IcM **only** for the `Other` (real product) failures, split by owning
-  service (resolve owner via `enghub-resolve_service`; ownership rotates). For evidence, pull the
+- **Incident filing** — suggest an IcM **only** for genuine product/service failures — the
+  `C8-ChatAcl403`, `C9-ChatNotFound`, `C10-TeamsMT403`, and `C7-Scheduling` buckets (plus any residual
+  `Other`) — split by owning service (resolve owner via `enghub-resolve_service`; ownership rotates). For evidence, pull the
   **failing-request MS-CV + UTC time** straight from the report's `🔎 Failure telemetry (per test)` appendix
   (the parser extracts the correlation vector of the failing 4xx/5xx request per test). Include the MS-CV,
   UTC time, test names, Delos tenant id `4d8a5373-66c4-4716-a044-f39e72033963`, and the UTC time window
@@ -209,9 +221,14 @@ reports **and** the history sync across machines via OneDrive.
 `AADSTS50020 → other AADSTS → Trouter ("not connected within") → Scheduling Service
 ("schedulingexception" / "scheduler.communications" / "/teams/v1/meetings") → MsgAPI 401 (requires
 "<<< 401" **and** a "kid"/"metadata" token signature) → AMS (asyncmediaexception) →
-generic "exceeded timeout value" → Other`. Scheduling Service 401s are classified **before** MsgAPI401
-so they are never mislabeled as a messaging-token failure. If a new recurring signature
-appears in the `Other` bucket, extend `classify()` and `LABELS` and re-run the parser.
+generic "exceeded timeout value" → ChatService ACL 403 ("aclcheckfailed" / "threadaccessdenied") →
+ChatService 404 ("chatserviceresponseexception" + "received: notfound") → TeamsMT 403
+("teamsmtexception" + "forbidden") → Other`. Scheduling Service failures are classified **before** MsgAPI401
+so they are never mislabeled as a messaging-token failure. The three product-rejection buckets
+(`C8-ChatAcl403`, `C9-ChatNotFound`, `C10-TeamsMT403`) are matched **after** the generic timeout rule so a
+plain NUnit timeout is never reclassified by an incidental 4xx elsewhere in its captured StdOut. If a new
+recurring signature still appears in the `Other` bucket, extend `classify()` and `LABELS` with a new named
+bucket and re-run the parser.
 
 ## Notes & gotchas
 

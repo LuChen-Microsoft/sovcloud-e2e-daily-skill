@@ -91,6 +91,23 @@ def classify(msg):
         return "C3-AMS"
     if "exceeded timeout value" in ml:
         return "Timeout"
+    # --- Genuine product/service rejections (previously dumped into 'Other'). Matched AFTER the
+    # Timeout rule so a test that merely timed out (NUnit message "exceeded timeout value") is not
+    # reclassified by an incidental 4xx elsewhere in its captured StdOut; only failures whose
+    # PRIMARY error is the rejection reach here. ---
+    # ChatService ACL/permission denial: a message delete/edit is rejected 403 because an
+    # admin/space-admin setting (admin-delete, delete-others) is not honored -- MFE diag
+    # THREADACCESSDENIED / AclCheckFailed sub-code on a ChatServiceResponseException "Forbidden".
+    if "aclcheckfailed" in ml or "threadaccessdenied" in ml:
+        return "C8-ChatAcl403"
+    # ChatService 404: an expected entity (activity-feed like/mention notification, or another
+    # resource) never materializes and the poll/GET returns NotFound.
+    if "chatserviceresponseexception" in ml and "received: notfound" in ml:
+        return "C9-ChatNotFound"
+    # TeamsMT (middletier) roster/role operation rejected 403 Forbidden (e.g. promote/demote
+    # guest, bulkUpdateRoledMembers). Owner is TeamsMT/middletier, not messaging tokens.
+    if "teamsmtexception" in ml and "forbidden" in ml:
+        return "C10-TeamsMT403"
     return "Other"
 
 
@@ -179,8 +196,11 @@ LABELS = {
     "C2-AadOther": "AAD token failure (other AADSTS)",
     "C6-Trouter": "Trouter not connected within timeout",
     "C5-MsgAPI401": "MsgAPI 401 (token kid not in metadata)",
-    "C7-Scheduling": "Scheduling Service meeting creation unauthorized (not a messaging-token issue)",
+    "C7-Scheduling": "Scheduling Service meeting creation failure (not a messaging-token issue)",
     "C3-AMS": "AMS old deployment",
+    "C8-ChatAcl403": "ChatService authorization denied (403 AclCheckFailed / THREADACCESSDENIED)",
+    "C9-ChatNotFound": "ChatService 404 NotFound (missing notification/resource)",
+    "C10-TeamsMT403": "TeamsMT roster/role op forbidden (403)",
     "Timeout": "60s/90s NUnit timeout (uncategorized)",
     "Other": "Other / uncategorized signature",
 }

@@ -160,9 +160,12 @@ report, replace the placeholders by reading the captured per-test `StdOut` in th
     setting is **not honored** — the admin's message delete/edit is rejected (e.g.
     `ToggleAdminDeleteEnabled_AdminHonors`, `TestRestoreArchivedTeam_DeleteOthersMessageAllowedAgain_ForAdmin`).
     Owner: **ChatService / msgapi**. IcM-worthy.
-  - `C9-ChatNotFound` (ChatService `404` NotFound): an expected entity never materializes — e.g. an
-    activity-feed like/mention notification (`GroupChatTests.LikeNotification` / `MentionNotification`) the
-    poll never finds. Owner: **Activity Feed / Notifications (msgapi)**. IcM-worthy.
+  - `C9-ChatNotFound` (ChatService `404` NotFound): a msgapi GET returns 404 for a resource that should
+    exist — e.g. the per-user notifications stream `GET .../v1/users/ME/conversations/48:notifications/messages`
+    returns `LocationLookupFailed` / mfeDiagCode `002-THREADRESOURCENOTFOUND-404`
+    (`GroupChatTests.LikeNotification` / `MentionNotification`), msgapi's MFE unable to locate
+    `teamsstream_notifications_<user>@thread.v2`. Owner: **ChatService / msgapi** (they may hand off to the
+    notifications-stream/Substrate pipeline if that stream is simply unprovisioned on Delos). IcM-worthy.
   - `C10-TeamsMT403` (TeamsMT `403` Forbidden): a TeamsMT/middletier roster/role op is rejected (e.g.
     `bulkUpdateRoledMembers` on guest promote/demote, `PromoteDemoteGuest_InitiatorAdmin_ThrowsException`).
     Owner: **TeamsMT / middletier**. IcM-worthy.

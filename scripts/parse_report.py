@@ -182,7 +182,7 @@ LABELS = {
     "C7-Scheduling": "Scheduling Service meeting creation unauthorized (not a messaging-token issue)",
     "C3-AMS": "AMS old deployment",
     "Timeout": "60s/90s NUnit timeout (uncategorized)",
-    "Other": "Other / new failure pattern",
+    "Other": "Other / uncategorized signature",
 }
 
 
@@ -554,6 +554,19 @@ def main():
     }
     prev = find_prev_metrics(a.reports_root, key, date_str, explicit=a.prev)
     comp_lines = comparison_block(metrics, prev)
+    # Recurring (already failing last run) vs new (started failing this run) per Known-issues
+    # bucket, so the category breakdown separates long-standing issues from regressions. Uses the
+    # previous run's fail_tests (failed >=1 run, category-agnostic — matches the churn 'still'/'new'
+    # definitions). prev_fail_set is None when there is no comparable prior run (baseline) or the
+    # prior metrics predate per-test tracking, in which case the tag is omitted.
+    _pf = prev.get("fail_tests") if prev else None
+    prev_fail_set = set(_pf) if isinstance(_pf, dict) else None
+
+    def churn_tag(tests):
+        if prev_fail_set is None:
+            return ""
+        recurring = sum(1 for t in tests if t in prev_fail_set)
+        return f" \u2014 \u267B\ufe0f {recurring} recurring / \U0001F195 {len(tests) - recurring} new"
 
     # ---------- plain report ----------
     P = [f"# {a.label} in {a.cloud} - {a.runs}-run stability report\n", "## Run summary",
@@ -624,7 +637,7 @@ def main():
         S.append(f"- {em} {g} \u2014 {grp_pass[g]}/{ex} ({rate:.0f}%){skip}" + (f" \u2014 failures: {cats}" if cats else ""))
     S += ["", "## \U0001F6A8 Known issues & status", ""]
     for cat, tests in sorted(cat_tests.items(), key=lambda kv: -len(kv[1])):
-        S.append(f"- \U0001F9EF **{LABELS.get(cat, cat)}** \u2014 {len(tests)} tests (best-of-{a.runs}). [AGENT: ONE concise sentence \u2014 root cause + owner/status; keep it scannable like a status line]")
+        S.append(f"- \U0001F9EF **{LABELS.get(cat, cat)}** \u2014 {len(tests)} tests (best-of-{a.runs}){churn_tag(tests)}. [AGENT: ONE concise sentence \u2014 root cause + owner/status; keep it scannable like a status line]")
     S += ["", "## \U0001F6E3\ufe0f Path to green", ""]
     for cat, tests in sorted(cat_tests.items(), key=lambda kv: -len(kv[1])):
         S.append(f"- Resolving **{LABELS.get(cat, cat)}** would unblock ~{len(tests)} tests.")
